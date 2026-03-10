@@ -39,7 +39,9 @@ def write_global_log(tool, count, size_in, size_out, duration):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     saved = size_in - size_out
     log_entry = f"[{now}] {tool.upper()} | Files: {count} | Saved: {saved:.2f}MB | {duration:.2f}s\n"
-    with open(log_file, "a") as f: f.write(log_entry)
+    try:
+        with open(log_file, "a") as f: f.write(log_entry)
+    except: pass
 
 def get_thumbnail(file_bytes, ext, manual_rot=0):
     try:
@@ -74,60 +76,54 @@ def process_reducer(uploaded_files, deep=True):
     return results, total_in/(1024*1024), total_out/(1024*1024)
 
 def process_universal_merger(uploaded_files, password=None, rotations={}):
-    res = fitz.open()
+    res = fitz.open() # Master PDF
     total_in = 0
     for f in uploaded_files:
         f.seek(0); fb = f.read(); total_in += len(fb)
         ext = f.name.split('.')[-1].lower()
         rot = rotations.get(f.name, 0)
+        
         if ext == "pdf":
             with fitz.open(stream=fb, filetype="pdf") as m:
                 if rot != 0:
                     for page in m: page.set_rotation((page.rotation + rot) % 360)
                 res.insert_pdf(m)
         else:
+            # Handle Image to PDF conversion
             img = Image.open(BytesIO(fb)).convert("RGB")
             if rot != 0: img = img.rotate(-rot, expand=True)
-            img_io = BytesIO(); img.save(img_io, format='JPEG')
-            with fitz.open("pdf", img_io.getvalue()) as img_doc: res.insert_pdf(img_doc)
+            img_io = BytesIO()
+            img.save(img_io, format='JPEG', quality=85)
+            # Create a 1-page PDF from the image bytes
+            img_pdf_data = fitz.open("jpg", img_io.getvalue()).convert_to_pdf()
+            with fitz.open("pdf", img_pdf_data) as img_doc:
+                res.insert_pdf(img_doc)
+    
     out = BytesIO()
-    if password: res.save(out, encryption=fitz.PDF_ENCRYPT_AES_256, user_pw=password)
-    else: res.save(out, garbage=4, deflate=True, clean=True)
+    if password and len(password) > 0:
+        res.save(out, encryption=fitz.PDF_ENCRYPT_AES_256, user_pw=password, owner_pw=password)
+    else:
+        res.save(out, garbage=4, deflate=True, clean=True)
+    
+    final_data = out.getvalue()
     res.close()
-    return out.getvalue(), total_in/(1024*1024), len(out.getvalue())/(1024*1024)
+    return final_data, total_in/(1024*1024), len(final_data)/(1024*1024)
 
 def process_ico_maker(uploaded_files):
     results = []
     for f in uploaded_files:
         img = Image.open(f)
         out = BytesIO()
-        img.save(out, format='ICO', sizes=[(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)])
+        img.save(out, format='ICO', sizes=[(32,32), (64,64), (128,128), (256,256)])
         results.append({"name": f.name.split('.')[0] + ".ico", "data": out.getvalue()})
     return results
 
 # --- 5. MAIN INTERFACE ---
-st.title("🚀 PDF Master: Elite Web Suite")
-
-# Sidebar for grouped navigation
 st.sidebar.title("🛠️ Tools Menu")
-app_mode = st.sidebar.selectbox("Choose a category", ["📉 Reducer Mode", "🔄 Converter Mode", "📜 Management"])
+app_mode = st.sidebar.selectbox("Choose a category", ["🔄 Converter Mode", "📉 Reducer Mode", "📜 Management"])
 
-# --- GROUP 1: REDUCER MODE ---
-if app_mode == "📉 Reducer Mode":
-    st.header("PDF Size Reducer")
-    red_files = st.file_uploader("Select PDFs", type="pdf", accept_multiple_files=True, key="red_up")
-    if red_files:
-        mode = st.radio("Compression Mode", ["Standard", "Deep Squeeze (Stripping Metadata)"])
-        if st.button("START REDUCTION"):
-            start_t = time.time()
-            processed, s_in, s_out = process_reducer(red_files, deep=("Deep Squeeze" in mode))
-            dur = time.time() - start_t
-            st.success(f"Compressed! Saved {(s_in - s_out):.2f} MB")
-            for item in processed: st.download_button(f"📥 Download {item['name']}", data=item['data'], file_name=f"opt_{item['name']}")
-            write_global_log(mode, len(red_files), s_in, s_out, dur)
-
-# --- GROUP 2: CONVERTER MODE ---
-elif app_mode == "🔄 Converter Mode":
+# --- GROUP 1: CONVERTER MODE ---
+if app_mode == "🔄 Converter Mode":
     tool_choice = st.radio("Select Tool", ["Universal Merger (PDF/IMG)", "Icon Maker (.ICO)"], horizontal=True)
     
     if tool_choice == "Universal Merger (PDF/IMG)":
@@ -146,7 +142,7 @@ elif app_mode == "🔄 Converter Mode":
                 if f.name not in st.session_state.rotation_states: st.session_state.rotation_states[f.name] = 0
                 f.seek(0); thumb = get_thumbnail(f.read(), f.name.split('.')[-1].lower(), st.session_state.rotation_states[f.name])
                 with grid[idx % 6]:
-                    if thumb: st.image(thumb, use_container_width=True)
+                    if thumb: st.image(thumb, width="stretch")
                     c1, c2 = st.columns(2)
                     if c1.button("🔄", key=f"r_{f.name}"):
                         st.session_state.rotation_states[f.name] = (st.session_state.rotation_states[f.name] + 90) % 360; st.rerun()
@@ -157,11 +153,12 @@ elif app_mode == "🔄 Converter Mode":
             st.divider()
             pass_val = st.text_input("Optional: Set Password", type="password")
             if st.button("EXECUTE UNIVERSAL MERGE"):
-                start_t = time.time()
-                data, s_in, s_out = process_universal_merger(files, password=pass_val, rotations=st.session_state.rotation_states)
-                dur = time.time() - start_t
-                st.download_button("📥 Download PDF", data=data, file_name="merged.pdf")
-                st.success(f"Success! Merged in {dur:.2f}s"); write_global_log("MERGER", len(files), s_in, s_out, dur)
+                with st.spinner("Merging documents..."):
+                    start_t = time.time()
+                    data, s_in, s_out = process_universal_merger(files, password=pass_val, rotations=st.session_state.rotation_states)
+                    dur = time.time() - start_t
+                    st.download_button("📥 Download PDF", data=data, file_name="merged_output.pdf")
+                    st.success(f"Success! Merged in {dur:.2f}s"); write_global_log("MERGER", len(files), s_in, s_out, dur)
 
     elif tool_choice == "Icon Maker (.ICO)":
         st.header("Icon Maker (.ICO)")
@@ -169,12 +166,27 @@ elif app_mode == "🔄 Converter Mode":
         if ico_files and st.button("CONVERT TO ICO"):
             results = process_ico_maker(ico_files)
             for res in results: st.download_button(f"📥 Download {res['name']}", data=res['data'], file_name=res['name'])
-            st.balloons()
+
+# --- GROUP 2: REDUCER MODE ---
+elif app_mode == "📉 Reducer Mode":
+    st.header("PDF Size Reducer")
+    red_files = st.file_uploader("Select PDFs", type="pdf", accept_multiple_files=True, key="red_up")
+    if red_files:
+        comp_mode = st.radio("Compression Level", ["Standard", "Deep Squeeze"])
+        if st.button("START REDUCTION"):
+            start_t = time.time()
+            processed, s_in, s_out = process_reducer(red_files, deep=(comp_mode == "Deep Squeeze"))
+            dur = time.time() - start_t
+            st.success(f"Compressed! Saved {(s_in - s_out):.2f} MB")
+            for item in processed: st.download_button(f"📥 Download {item['name']}", data=item['data'], file_name=f"opt_{item['name']}")
+            write_global_log(comp_mode, len(red_files), s_in, s_out, dur)
 
 # --- GROUP 3: MANAGEMENT ---
 elif app_mode == "📜 Management":
     st.header("Audit & History")
     if os.path.exists("web_activity_log.txt"):
         with open("web_activity_log.txt", "r") as f: st.text_area("Activity History", f.read(), height=500)
-        if st.button("Clear Log History"): os.remove("web_activity_log.txt"); st.rerun()
+        if st.button("Clear Log History"): 
+            try: os.remove("web_activity_log.txt"); st.rerun()
+            except: st.error("Could not clear log.")
     else: st.info("No activity recorded yet.")
