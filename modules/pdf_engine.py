@@ -1,6 +1,7 @@
 import fitz
 from PIL import Image
 from io import BytesIO
+from docx import Document
 import streamlit as st
 
 def process_universal_merger(uploaded_files, password=None, rotations={}):
@@ -55,3 +56,18 @@ def process_ico_maker(uploaded_files):
         img.save(out, format='ICO', sizes=[(32,32), (64,64), (256,256)])
         results.append({"name": f.name.split('.')[0] + ".ico", "data": out.getvalue()})
     return results
+
+def pdf_to_word(pdf_bytes):
+    """Extracts text from PDF and builds a .docx file."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    word_doc = Document()
+    
+    for page in doc:
+        text = page.get_text("text")
+        word_doc.add_paragraph(text)
+        word_doc.add_page_break()
+    
+    out_io = BytesIO()
+    word_doc.save(out_io)
+    doc.close()
+    return out_io.getvalue()
