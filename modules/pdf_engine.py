@@ -5,7 +5,6 @@ import streamlit as st
 
 def process_universal_merger(uploaded_files, password=None, rotations={}):
     res = fitz.open()
-    progress = st.progress(0)
     for idx, f in enumerate(uploaded_files):
         f.seek(0); fb = f.read()
         ext = f.name.split('.')[-1].lower()
@@ -22,18 +21,17 @@ def process_universal_merger(uploaded_files, password=None, rotations={}):
             img.save(img_io, format='JPEG', quality=85)
             img_pdf_data = fitz.open("jpg", img_io.getvalue()).convert_to_pdf()
             with fitz.open("pdf", img_pdf_data) as img_doc: res.insert_pdf(img_doc)
-        progress.progress((idx + 1) / len(uploaded_files))
     
     out = BytesIO()
     if password: res.save(out, encryption=fitz.PDF_ENCRYPT_AES_256, user_pw=password, owner_pw=password)
     else: res.save(out, garbage=4, deflate=True)
-    res.close(); progress.empty()
+    res.close()
     return out.getvalue()
 
 def process_reducer(uploaded_files, deep=True):
     results = []
-    progress = st.progress(0)
-    for idx, f in enumerate(uploaded_files):
+    for f in uploaded_files:
+        f.seek(0)
         doc = fitz.open(stream=f.read(), filetype="pdf")
         out_pdf = BytesIO()
         if deep:
@@ -43,8 +41,17 @@ def process_reducer(uploaded_files, deep=True):
                 new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
                 new_page.insert_image(page.rect, stream=pix.tobytes("jpg", jpg_quality=60))
             new_doc.save(out_pdf, garbage=4, deflate=True); new_doc.close()
-        else: doc.save(out_pdf, garbage=4, deflate=True)
+        else: 
+            doc.save(out_pdf, garbage=4, deflate=True)
         results.append({"name": f"opt_{f.name}", "data": out_pdf.getvalue()})
-        progress.progress((idx + 1) / len(uploaded_files))
-    progress.empty()
+        doc.close()
+    return results
+
+def process_ico_maker(uploaded_files):
+    results = []
+    for f in uploaded_files:
+        img = Image.open(f)
+        out = BytesIO()
+        img.save(out, format='ICO', sizes=[(32,32), (64,64), (256,256)])
+        results.append({"name": f.name.split('.')[0] + ".ico", "data": out.getvalue()})
     return results
