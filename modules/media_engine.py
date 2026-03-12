@@ -1,25 +1,9 @@
 import streamlit as st
 from moviepy.editor import VideoFileClip
-from docx import Document
 import fitz
 from io import BytesIO
 import os
 import tempfile
-
-def pdf_to_word(pdf_bytes):
-    """Converts PDF text into a Word Document structure."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    word_doc = Document()
-    
-    for page in doc:
-        text = page.get_text("text")
-        word_doc.add_paragraph(text)
-        word_doc.add_page_break()
-    
-    out_io = BytesIO()
-    word_doc.save(out_io)
-    doc.close()
-    return out_io.getvalue()
 
 def convert_video(uploaded_file, target_format):
     """Processes video conversion using temporary file streams."""
