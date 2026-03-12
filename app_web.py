@@ -7,9 +7,9 @@ from io import BytesIO
 # Import Custom Modules
 from modules.auth import check_password
 from modules.ui_styles import apply_custom_css
-from modules.pdf_engine import process_universal_merger, process_reducer, process_ico_maker
+from modules.pdf_engine import process_universal_merger, process_reducer, process_ico_maker, pdf_to_word
 from modules.utils import write_global_log, get_thumbnail
-from modules.media_engine import pdf_to_word, convert_video
+from modules.media_engine import convert_video
 
 # 1. Access Control
 if not check_password():
@@ -40,7 +40,7 @@ app_mode = st.sidebar.selectbox("Choose Category",
 
 # --- CONVERTER MODE ---
 if app_mode == "🔄 Converter Mode":
-    tool = st.radio("Tool", ["Universal Merger", "ICO Maker"], horizontal=True)
+    tool = st.radio("Tool", ["Universal Merger", "PDF to Word", "ICO Maker"], horizontal=True)
     
     if tool == "Universal Merger":
         col_up, col_clr = st.columns([5, 1])
@@ -81,6 +81,14 @@ if app_mode == "🔄 Converter Mode":
                 st.download_button("📥 Download PDF", data=data, file_name="merged_result.pdf")
                 write_global_log("MERGER", len(files), dur)
 
+    elif tool == "PDF to Word":
+        st.subheader("📄 PDF to Word Converter")
+        pdf_file = st.file_uploader("Upload PDF", type="pdf", key="p2w_up")
+        if pdf_file and st.button("Convert to Word"):
+            with st.spinner("Processing..."):
+                word_data = pdf_to_word(pdf_file.read())
+                st.download_button("📥 Download Word Doc", word_data, f"{pdf_file.name}.docx")
+                
     else:
         st.header("Icon Maker (.ICO)")
         ico_files = st.file_uploader("Upload Images", type=["jpg","png","jpeg"], accept_multiple_files=True)
@@ -88,6 +96,18 @@ if app_mode == "🔄 Converter Mode":
             res_list = process_ico_maker(ico_files)
             for r in res_list:
                 st.download_button(f"📥 Download {r['name']}", data=r['data'], file_name=r['name'])
+
+# --- 🎬 MEDIA MODE (New) ---
+elif app_mode == "🎬 Media Mode":
+    st.header("Video Processing Suite")
+    st.subheader("🎥 Video Format Transcoder")
+    vid_file = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"], key="v_up")
+    target = st.selectbox("Target Format", ["MP4", "GIF"])
+    
+    if vid_file and st.button("Start Conversion"):
+        with st.spinner("Processing video... this may take a moment"):
+            vid_data = convert_video(vid_file, target)
+            st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
 
 # --- REDUCER MODE ---
 elif app_mode == "📉 Reducer Mode":
@@ -148,3 +168,4 @@ if app_mode == "🎬 Media Suite":
             with st.spinner("Processing video... this may take a moment"):
                 vid_data = convert_video(vid_file, target)
                 st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
+
