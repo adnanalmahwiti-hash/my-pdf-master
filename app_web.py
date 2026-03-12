@@ -8,7 +8,38 @@ from datetime import datetime
 import threading
 import zipfile
 
-# --- 1. CONFIG & STYLING ---
+# --- 1. SECURITY GATE ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        # This looks for a variable named 'password' in your Streamlit Cloud Secrets
+        if st.session_state["password_input"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password_input"]  # Clean up memory
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First-time visit: Show login screen
+        st.title("🔐 Elite Suite Access")
+        st.text_input("Enter Access Key", type="password", on_change=password_entered, key="password_input")
+        st.info("Authorized Personnel Only.")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Wrong password
+        st.title("🔐 Elite Suite Access")
+        st.text_input("Enter Access Key", type="password", on_change=password_entered, key="password_input")
+        st.error("🚫 Access Denied: Invalid Key")
+        return False
+    else:
+        # Password is correct
+        return True
+
+# If password check fails, stop the script here
+if not check_password():
+    st.stop()
+
+# --- 2. CONFIG & STYLING (The rest of your app starts here) ---
 st.set_page_config(page_title="PDF Master: Elite Web", page_icon="🚀", layout="wide")
 
 st.markdown("""
@@ -30,19 +61,18 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SESSION STATE & COOKIE RESET ---
+# --- 3. SESSION STATE & RESET ---
 if 'rotation_states' not in st.session_state: st.session_state.rotation_states = {}
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
 
 def hard_reset():
-    """Wipes session data to clear 'stale' browser cookie interference."""
     for key in list(st.session_state.keys()):
-        if key != 'uploader_key': del st.session_state[key]
+        if key not in ['uploader_key', 'password_correct']: del st.session_state[key]
     st.session_state.rotation_states = {}
     st.session_state.uploader_key += 1
     st.rerun()
 
-# --- 3. LOGGING (Thread-Safe) ---
+# --- 4. LOGGING & ENGINES ---
 lock = threading.Lock()
 def write_global_log(tool, count, size_in, size_out, duration):
     log_file = "web_activity_log.txt"
@@ -54,7 +84,6 @@ def write_global_log(tool, count, size_in, size_out, duration):
             with open(log_file, "a") as f: f.write(log_entry)
         except: pass
 
-# --- 4. HELPERS ---
 def get_thumbnail(file_bytes, ext, manual_rot=0):
     try:
         if ext == "pdf":
@@ -67,8 +96,6 @@ def get_thumbnail(file_bytes, ext, manual_rot=0):
         if manual_rot != 0: img = img.rotate(-manual_rot, expand=True)
         return ImageOps.fit(img, (180, 180), Image.Resampling.LANCZOS)
     except: return None
-
-# --- 5. CORE ENGINES ---
 
 def process_reducer(uploaded_files, deep=True):
     results, total_in, total_out = [], 0, 0
@@ -126,8 +153,12 @@ def process_ico_maker(uploaded_files):
         results.append({"name": f.name.split('.')[0] + ".ico", "data": out.getvalue()})
     return results
 
-# --- 6. MAIN INTERFACE ---
+# --- 5. MAIN INTERFACE ---
 st.sidebar.title("🛠️ Elite Suite Menu")
+if st.sidebar.button("🔓 Logout"):
+    del st.session_state["password_correct"]
+    st.rerun()
+
 app_mode = st.sidebar.selectbox("Choose Category", ["🔄 Converter Mode", "📉 Reducer Mode", "📜 Management"])
 
 # --- CONVERTER MODE ---
@@ -152,7 +183,7 @@ if app_mode == "🔄 Converter Mode":
                     if c2.button("✖", key=f"x_{st.session_state.uploader_key}_{idx}"):
                         st.session_state.rotation_states[f.name] = 0; st.rerun()
                     st.markdown(f'<p class="file-name-text">{f.name}</p>', unsafe_allow_html=True)
-            pass_val = st.text_input("Optional Password", type="password")
+            pass_val = st.text_input("Optional PDF Password", type="password")
             if st.button("EXECUTE MERGE"):
                 data, s_in, s_out = process_universal_merger(files, password=pass_val, rotations=st.session_state.rotation_states)
                 st.download_button("📥 Download PDF", data=data, file_name="merged.pdf")
@@ -173,7 +204,6 @@ elif app_mode == "📉 Reducer Mode":
             processed, s_in, s_out = process_reducer(red_files, deep=(mode=="Deep Squeeze"))
             st.success(f"Saved {(s_in - s_out):.2f} MB")
             
-            # --- ZIP DOWNLOAD FEATURE ---
             zip_buffer = BytesIO()
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
                 for item in processed: zf.writestr(item["name"], item["data"])
