@@ -1,47 +1,125 @@
 import streamlit as st
+import os
+import time
 import zipfile
 from io import BytesIO
-import os
 
-# Import our custom modules
+# Import Custom Modules
 from modules.auth import check_password
 from modules.ui_styles import apply_custom_css
-from modules.pdf_engine import process_universal_merger, process_reducer
+from modules.pdf_engine import process_universal_merger, process_reducer, process_ico_maker
 from modules.utils import write_global_log, get_thumbnail
 
-# 1. Security Gate
+# 1. Access Control
 if not check_password():
     st.stop()
 
-# 2. Style & State
+# 2. Initialize UI & State
 apply_custom_css()
-if 'rotation_states' not in st.session_state: st.session_state.rotation_states = {}
-if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
+
+if 'rotation_states' not in st.session_state: 
+    st.session_state.rotation_states = {}
+if 'uploader_key' not in st.session_state: 
+    st.session_state.uploader_key = 0
+
+def hard_reset():
+    """Triggers a clean wipe of uploader and local cache."""
+    st.session_state.rotation_states = {}
+    st.session_state.uploader_key += 1
+    st.rerun()
 
 # 3. Sidebar Navigation
-st.sidebar.title("🛠️ Elite Suite Menu")
+st.sidebar.title("🚀 Elite Suite")
 if st.sidebar.button("🔓 Logout"):
-    del st.session_state["password_correct"]; st.rerun()
+    del st.session_state["password_correct"]
+    st.rerun()
 
-app_mode = st.sidebar.selectbox("Category", ["🔄 Converter Mode", "📉 Reducer Mode", "📜 Management"])
+app_mode = st.sidebar.selectbox("Choose Category", ["🔄 Converter Mode", "📉 Reducer Mode", "📜 Management"])
 
-# --- CONVERTER ---
+# --- CONVERTER MODE ---
 if app_mode == "🔄 Converter Mode":
-    # (The same logic as before, but calling functions from modules)
-    files = st.file_uploader("Upload Files", accept_multiple_files=True, key=f"up_{st.session_state.uploader_key}")
-    if files:
-        # Gallery Grid logic...
-        # If button "Execute Merge":
-        # data = process_universal_merger(files, rotations=st.session_state.rotation_states)
-        pass
+    tool = st.radio("Tool", ["Universal Merger", "ICO Maker"], horizontal=True)
+    
+    if tool == "Universal Merger":
+        col_up, col_clr = st.columns([5, 1])
+        with col_clr:
+            st.write("###")
+            if st.button("🗑️ Reset"): hard_reset()
+            
+        files = st.file_uploader("Upload PDF or Images", type=["pdf","jpg","png","jpeg"], 
+                                 accept_multiple_files=True, key=f"up_{st.session_state.uploader_key}")
+        
+        if files:
+            st.subheader(f"🖼️ Gallery ({len(files)} files)")
+            grid = st.columns(6)
+            for idx, f in enumerate(files):
+                if f.name not in st.session_state.rotation_states: 
+                    st.session_state.rotation_states[f.name] = 0
+                
+                f.seek(0)
+                thumb = get_thumbnail(f.read(), f.name.split('.')[-1].lower(), st.session_state.rotation_states[f.name])
+                
+                with grid[idx % 6]:
+                    if thumb: st.image(thumb, width="stretch")
+                    c1, c2 = st.columns(2)
+                    if c1.button("🔄", key=f"r_{st.session_state.uploader_key}_{idx}"):
+                        st.session_state.rotation_states[f.name] = (st.session_state.rotation_states[f.name] + 90) % 360
+                        st.rerun()
+                    if c2.button("✖", key=f"x_{st.session_state.uploader_key}_{idx}"):
+                        st.session_state.rotation_states[f.name] = 0
+                        st.rerun()
+                    st.markdown(f'<p class="file-name-text">{f.name}</p>', unsafe_allow_html=True)
+            
+            st.divider()
+            pass_val = st.text_input("Optional PDF Password", type="password")
+            if st.button("EXECUTE MERGE"):
+                start_t = time.time()
+                data = process_universal_merger(files, password=pass_val, rotations=st.session_state.rotation_states)
+                dur = time.time() - start_t
+                st.download_button("📥 Download PDF", data=data, file_name="merged_result.pdf")
+                write_global_log("MERGER", len(files), dur)
 
-# --- REDUCER ---
+    else:
+        st.header("Icon Maker (.ICO)")
+        ico_files = st.file_uploader("Upload Images", type=["jpg","png","jpeg"], accept_multiple_files=True)
+        if ico_files and st.button("CONVERT TO ICO"):
+            res_list = process_ico_maker(ico_files)
+            for r in res_list:
+                st.download_button(f"📥 Download {r['name']}", data=r['data'], file_name=r['name'])
+
+# --- REDUCER MODE ---
 elif app_mode == "📉 Reducer Mode":
-    # Reducer logic calling process_reducer...
-    pass
+    st.header("PDF Size Reducer")
+    red_files = st.file_uploader("Select PDFs", type="pdf", accept_multiple_files=True)
+    
+    if red_files:
+        comp_mode = st.radio("Compression", ["Standard", "Deep Squeeze"])
+        if st.button("START REDUCTION"):
+            start_t = time.time()
+            processed = process_reducer(red_files, deep=(comp_mode == "Deep Squeeze"))
+            dur = time.time() - start_t
+            
+            # ZIP Feature
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
+                for item in processed:
+                    zf.writestr(item["name"], item["data"])
+            
+            st.download_button("📥 Download All as ZIP", data=zip_buffer.getvalue(), file_name="compressed_pdfs.zip")
+            
+            for item in processed: 
+                st.download_button(f"📥 Download {item['name']}", data=item['data'], file_name=item['name'])
+            
+            write_global_log(comp_mode, len(red_files), dur)
 
 # --- MANAGEMENT ---
 elif app_mode == "📜 Management":
     st.header("Audit History")
     if os.path.exists("web_activity_log.txt"):
-        with open("web_activity_log.txt", "r") as f: st.text_area("Logs", f.read(), height=400)
+        with open("web_activity_log.txt", "r") as f:
+            st.text_area("Logs", f.read(), height=400)
+        if st.button("Clear Log History"):
+            os.remove("web_activity_log.txt")
+            st.rerun()
+    else:
+        st.info("No activity recorded yet.")
