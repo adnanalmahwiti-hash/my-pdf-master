@@ -9,6 +9,7 @@ from modules.auth import check_password
 from modules.ui_styles import apply_custom_css
 from modules.pdf_engine import process_universal_merger, process_reducer, process_ico_maker
 from modules.utils import write_global_log, get_thumbnail
+from modules.media_engine import pdf_to_word, convert_video
 
 # 1. Access Control
 if not check_password():
@@ -34,7 +35,8 @@ if st.sidebar.button("🔓 Logout"):
     del st.session_state["password_correct"]
     st.rerun()
 
-app_mode = st.sidebar.selectbox("Choose Category", ["🔄 Converter Mode", "📉 Reducer Mode", "📜 Management"])
+app_mode = st.sidebar.selectbox("Choose Category", 
+    ["🔄 Converter Mode", "📉 Reducer Mode", "🎬 Media Suite", "📜 Management"])
 
 # --- CONVERTER MODE ---
 if app_mode == "🔄 Converter Mode":
@@ -123,3 +125,26 @@ elif app_mode == "📜 Management":
             st.rerun()
     else:
         st.info("No activity recorded yet.")
+
+
+# --- NEW: MEDIA SUITE ---
+if app_mode == "🎬 Media Suite":
+    st.header("Media & Document Suite")
+    sub_tool = st.tabs(["📄 PDF to Word", "🎥 Video Converter"])
+    
+    with sub_tool[0]:
+        st.subheader("Convert PDF to editable Word (.docx)")
+        pdf_file = st.file_uploader("Upload PDF", type="pdf", key="p2w")
+        if pdf_file and st.button("Convert to Word"):
+            with st.spinner("Extracting text..."):
+                word_data = pdf_to_word(pdf_file.read())
+                st.download_button("📥 Download Word Doc", word_data, f"{pdf_file.name}.docx")
+
+    with sub_tool[1]:
+        st.subheader("Video Format Transcoder")
+        vid_file = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"], key="v_up")
+        target = st.selectbox("Target Format", ["MP4", "GIF"])
+        if vid_file and st.button("Start Conversion"):
+            with st.spinner("Processing video... this may take a moment"):
+                vid_data = convert_video(vid_file, target)
+                st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
