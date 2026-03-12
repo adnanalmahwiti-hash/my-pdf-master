@@ -1,7 +1,7 @@
+from docx import Document
 import fitz
 from PIL import Image
 from io import BytesIO
-from docx import Document
 import streamlit as st
 
 def process_universal_merger(uploaded_files, password=None, rotations={}):
