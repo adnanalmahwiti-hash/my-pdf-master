@@ -150,7 +150,7 @@ elif app_mode == "📜 Management":
 # --- NEW: MEDIA SUITE ---
 if app_mode == "🎬 Media Suite":
     st.header("Media & Document Suite")
-    sub_tool = st.tabs(["📄 PDF to Word", "🎥 Video Converter"])
+    sub_tool = st.tabs(["🎥 Video Converter"])
     
     with sub_tool[0]:
         st.subheader("Convert PDF to editable Word (.docx)")
@@ -168,4 +168,5 @@ if app_mode == "🎬 Media Suite":
             with st.spinner("Processing video... this may take a moment"):
                 vid_data = convert_video(vid_file, target)
                 st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
+
 
