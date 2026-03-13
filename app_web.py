@@ -38,7 +38,7 @@ if st.sidebar.button("🔓 Logout"):
 app_mode = st.sidebar.selectbox("Choose Category", 
     ["🔄 Converter Mode", "📉 Reducer Mode", "🎬 Media Suite", "📜 Management"])
 
-# --- CONVERTER MODE ---
+# --- 🔄 CONVERTER MODE ---
 if app_mode == "🔄 Converter Mode":
     tool = st.radio("Tool", ["Universal Merger", "PDF to Word", "ICO Maker"], horizontal=True)
     
@@ -87,7 +87,7 @@ if app_mode == "🔄 Converter Mode":
         if pdf_file and st.button("Convert to Word"):
             with st.spinner("Processing..."):
                 word_data = pdf_to_word(pdf_file.read())
-                st.download_button("📥 Download Word Doc", word_data, f"{pdf_file.name}.docx")
+                st.download_button("📥 Download Word Doc", data=word_data, file_name=f"{pdf_file.name}.docx")
                 
     else:
         st.header("Icon Maker (.ICO)")
@@ -97,19 +97,7 @@ if app_mode == "🔄 Converter Mode":
             for r in res_list:
                 st.download_button(f"📥 Download {r['name']}", data=r['data'], file_name=r['name'])
 
-# --- 🎬 MEDIA MODE (New) ---
-elif app_mode == "🎬 Media Mode":
-    st.header("Video Processing Suite")
-    st.subheader("🎥 Video Format Transcoder")
-    vid_file = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"], key="v_up")
-    target = st.selectbox("Target Format", ["MP4", "GIF"])
-    
-    if vid_file and st.button("Start Conversion"):
-        with st.spinner("Processing video... this may take a moment"):
-            vid_data = convert_video(vid_file, target)
-            st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
-
-# --- REDUCER MODE ---
+# --- 📉 REDUCER MODE ---
 elif app_mode == "📉 Reducer Mode":
     st.header("PDF Size Reducer")
     red_files = st.file_uploader("Select PDFs", type="pdf", accept_multiple_files=True)
@@ -121,7 +109,6 @@ elif app_mode == "📉 Reducer Mode":
             processed = process_reducer(red_files, deep=(comp_mode == "Deep Squeeze"))
             dur = time.time() - start_t
             
-            # ZIP Feature
             zip_buffer = BytesIO()
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
                 for item in processed:
@@ -134,7 +121,21 @@ elif app_mode == "📉 Reducer Mode":
             
             write_global_log(comp_mode, len(red_files), dur)
 
-# --- MANAGEMENT ---
+# --- 🎬 MEDIA SUITE ---
+elif app_mode == "🎬 Media Suite":
+    st.header("Media Suite")
+    sub_tool = st.tabs(["🎥 Video Converter"]) # This only has ONE tab (index 0)
+
+    with sub_tool[0]: # Changed from [1] to [0]
+        st.subheader("Video Format Transcoder")
+        vid_file = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"], key="v_up")
+        target = st.selectbox("Target Format", ["MP4", "GIF"])
+        if vid_file and st.button("Start Conversion"):
+            with st.spinner("Processing video... this may take a moment"):
+                vid_data = convert_video(vid_file, target)
+                st.download_button(f"📥 Download {target}", data=vid_data, file_name=f"converted.{target.lower()}")
+
+# --- 📜 MANAGEMENT ---
 elif app_mode == "📜 Management":
     st.header("Audit History")
     if os.path.exists("web_activity_log.txt"):
@@ -145,22 +146,3 @@ elif app_mode == "📜 Management":
             st.rerun()
     else:
         st.info("No activity recorded yet.")
-
-
-# --- NEW: MEDIA SUITE ---
-if app_mode == "🎬 Media Suite":
-    st.header("Media Suite")
-    sub_tool = st.tabs(["🎥 Video Converter"])
-    
-
-    with sub_tool[1]:
-        st.subheader("Video Format Transcoder")
-        vid_file = st.file_uploader("Upload Video", type=["mp4", "mov", "avi"], key="v_up")
-        target = st.selectbox("Target Format", ["MP4", "GIF"])
-        if vid_file and st.button("Start Conversion"):
-            with st.spinner("Processing video... this may take a moment"):
-                vid_data = convert_video(vid_file, target)
-                st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
-
-
-
