@@ -149,16 +149,9 @@ elif app_mode == "📜 Management":
 
 # --- NEW: MEDIA SUITE ---
 if app_mode == "🎬 Media Suite":
-    st.header("Media & Document Suite")
+    st.header("Media Suite")
     sub_tool = st.tabs(["🎥 Video Converter"])
     
-    with sub_tool[0]:
-        st.subheader("Convert PDF to editable Word (.docx)")
-        pdf_file = st.file_uploader("Upload PDF", type="pdf", key="p2w")
-        if pdf_file and st.button("Convert to Word"):
-            with st.spinner("Extracting text..."):
-                word_data = pdf_to_word(pdf_file.read())
-                st.download_button("📥 Download Word Doc", word_data, f"{pdf_file.name}.docx")
 
     with sub_tool[1]:
         st.subheader("Video Format Transcoder")
@@ -168,5 +161,6 @@ if app_mode == "🎬 Media Suite":
             with st.spinner("Processing video... this may take a moment"):
                 vid_data = convert_video(vid_file, target)
                 st.download_button(f"📥 Download {target}", vid_data, f"converted.{target.lower()}")
+
 
 
